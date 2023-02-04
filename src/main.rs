@@ -1,18 +1,20 @@
 use std::io::prelude::*;
+use std::io::ErrorKind;
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
-
     for stream in listener.incoming() {
-        match stream {
+        // TODO: using thread pool
+        thread::spawn(|| match stream {
             Ok(stream) => {
                 handle_request(stream);
             }
             Err(e) => {
                 println!("error: {}", e);
             }
-        }
+        });
     }
 }
 
@@ -28,7 +30,18 @@ fn handle_request(mut stream: TcpStream) {
         }
 
         let response = "+PONG\r\n";
-        stream.write(response.as_bytes()).unwrap();
-        stream.flush().expect("error while writing to connection");
+        match stream.write(response.as_bytes()) {
+            Ok(_) => {
+                stream.flush().expect("error while writing to connection");
+            }
+            Err(error) => match error.kind() {
+                ErrorKind::BrokenPipe => {
+                    break;
+                }
+                other_error => {
+                    panic!("error: {:?}", other_error);
+                }
+            },
+        }
     }
 }
