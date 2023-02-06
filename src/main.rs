@@ -1,26 +1,30 @@
 use anyhow::anyhow;
 use anyhow::Result;
-use redis_starter_rust::command_executer::CommandExecuter;
+use redis_starter_rust::command_executor::CommandExecutor;
 use redis_starter_rust::resp_decoder::RESPDecoder;
+use redis_starter_rust::store::Store;
 use std::io::prelude::*;
 use std::io::ErrorKind;
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, RwLock};
 use std::thread;
 
 fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+    let store = Arc::new(RwLock::new(Store::new()));
     for stream in listener.incoming() {
         // TODO: using thread pool
         let stream = stream?;
-        thread::spawn(|| {
-            handle_request(stream).unwrap_or_else(|error| eprintln!("{:?}", error));
+        let store = Arc::clone(&store);
+        thread::spawn(move || {
+            handle_request(stream, store).unwrap_or_else(|error| eprintln!("{:?}", error));
         });
     }
 
     Ok(())
 }
 
-fn handle_request(mut stream: TcpStream) -> Result<()> {
+fn handle_request(mut stream: TcpStream, store: Arc<RwLock<Store>>) -> Result<()> {
     loop {
         let mut buffer = [0; 1024];
         let byte_count = stream
@@ -39,7 +43,7 @@ fn handle_request(mut stream: TcpStream) -> Result<()> {
             continue;
         }
 
-        let command_executer = CommandExecuter::new(args);
+        let command_executer = CommandExecutor::new(args, &store);
         let response = command_executer.execute();
         match stream.write(&response[..]) {
             Ok(_) => {
