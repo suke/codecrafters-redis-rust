@@ -1,5 +1,5 @@
-use crate::resp::{BULK_STRING, CRLF, ERROR, INTEGER, RESP, SIMPLE_STRING};
-use crate::store::Store;
+use crate::resp::{BULK_STRING, CRLF, ERROR, INTEGER, NULL_STRING, RESP, SIMPLE_STRING};
+use crate::store::{SetOptions, Store};
 use std::sync::RwLock;
 
 #[derive(Clone)]
@@ -73,10 +73,23 @@ impl<'a> CommandExecutor<'a> {
 
         let key = self.args[1].string();
         let value = self.args[2].string();
+        let mut set_options = SetOptions::new();
+        // TODO: refactoring
+        if self.args.len() >= 3 {
+            for chunk in self.args[3..].chunks(2) {
+                match &*chunk[0].string().to_lowercase() {
+                    "px" => {
+                        let expire = chunk[1].string().parse::<u64>().unwrap();
+                        set_options.set_expire(expire);
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         match self.store.write() {
             Ok(mut store) => {
-                store.set(key, value);
+                store.set(key, value, &set_options);
                 append_simple_string(&mut bytes, "OK".to_string());
             }
             Err(_) => {
@@ -140,11 +153,7 @@ fn append_bulk_string(bytes: &mut Vec<u8>, value: String) {
 }
 
 fn append_null_string(bytes: &mut Vec<u8>) {
-    let mut data = [BULK_STRING.to_string(), "-1".to_string(), CRLF.to_string()]
-        .join("")
-        .as_bytes()
-        .to_vec();
-    bytes.append(&mut data);
+    bytes.append(&mut NULL_STRING.as_bytes().to_vec());
 }
 
 #[allow(dead_code)]
@@ -173,9 +182,12 @@ fn append_error(bytes: &mut Vec<u8>, error_type: String, message: String) {
 #[cfg(test)]
 mod tests {
     use super::CommandExecutor;
+    use crate::resp::NULL_STRING;
     use crate::resp_decoder::RESPDecoder;
     use crate::store::Store;
     use std::sync::RwLock;
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn it_should_execute_ping() {
@@ -210,6 +222,21 @@ mod tests {
         let get_command = b"*2\r\n$3\r\nget\r\n$3\r\nkey\r\n";
         let response = execute_command(get_command.to_vec(), &store);
         assert_eq!(String::from_utf8_lossy(&response[..]), "$5\r\nvalue\r\n");
+    }
+
+    #[test]
+    fn it_should_return_null_when_value_expires() {
+        let store = RwLock::new(Store::new());
+        let set_command =
+            b"*5\r\n$3\r\nset\r\n$3\r\nkey\r\n$5\r\nvalue\r\n$2\r\npx\r\n$3\r\n100\r\n";
+        execute_command(set_command.to_vec(), &store);
+
+        let times = Duration::from_millis(101);
+        thread::sleep(times);
+
+        let get_command = b"*2\r\n$3\r\nget\r\n$3\r\nkey\r\n";
+        let response = execute_command(get_command.to_vec(), &store);
+        assert_eq!(String::from_utf8_lossy(&response[..]), NULL_STRING);
     }
 
     #[test]

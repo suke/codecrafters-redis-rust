@@ -1,12 +1,13 @@
 use std::convert::TryFrom;
 
-pub const CRLF: &'static str = "\r\n";
-
 pub const SIMPLE_STRING: char = '+';
 pub const ERROR: char = '-';
 pub const INTEGER: char = ':';
 pub const BULK_STRING: char = '$';
 pub const ARRAY: char = '*';
+
+pub const CRLF: &'static str = "\r\n";
+pub const NULL_STRING: &'static str = "$-1\r\n";
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Type {

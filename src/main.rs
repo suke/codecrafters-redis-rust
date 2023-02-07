@@ -35,7 +35,7 @@ fn handle_request(mut stream: TcpStream, store: Arc<RwLock<Store>>) -> Result<()
             break;
         }
 
-        let mut decoder = RESPDecoder::new(buffer.to_vec());
+        let mut decoder = RESPDecoder::new(buffer[..byte_count].to_vec());
         let resp = decoder.next_resp()?;
         let args = resp.array();
 
